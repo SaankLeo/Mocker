@@ -12,24 +12,28 @@ enum Opcode {
 };
 /* 1 = load, 2 = add, 3 = subtract, 4 =multiply, 5=halt */
 
-void execute(int opcode, int op1, int op2, array<int,8>& R) {
+void execute(int opcode, int dest,int src1, int src2, array<int,8>& R) {
 
     if (opcode == LOAD) {
-        R[op1] = op2;
-        cout << "LOAD R" << op1 << " <- " << op2 << endl;
+        R[dest] = src1;
+        cout << "LOAD R" << dest << " <- " << src1 << endl;
     }
+
     else if (opcode == ADD) {
-        R[op1] += R[op2];
-        cout << "ADD R" << op1 << endl;
+        R[dest] = R[src1] + R[src2];
+        cout << "ADD R" << dest << " = R" << src1 << " + R" << src2 << endl;
     }
+
     else if (opcode == SUB) {
-        R[op1] -= R[op2];
-        cout << "SUB R" << op1 << endl;
+        R[dest] = R[src1] - R[src2];
+        cout << "SUB R" << dest << " = R" << src1 << " - R" << src2 << endl;
     }
+
     else if (opcode == MUL) {
-        R[op1] *= R[op2];
-        cout << "MUL R" << op1 << endl;
+        R[dest] = R[src1] * R[src2];
+        cout << "MUL R" << dest << " = R" << src1 << " * R" << src2 << endl;
     }
+
 }
 
 void runCPU(array<int,256>& memory, int programSize) {
@@ -40,16 +44,18 @@ void runCPU(array<int,256>& memory, int programSize) {
     while (PC < programSize) {
 
         int opcode = memory[PC];
-        int op1 = memory[PC + 1];
-        int op2 = memory[PC + 2];
+        int dest = memory[PC + 1];
+        int src1 = memory[PC + 2];
+        int src2 = memory[PC + 3];
+
 
         if (opcode == HALT) {
             cout << "HALT encountered\n";
             break;
         }
 
-        execute(opcode, op1, op2, R);
-        PC += 3;
+        execute(opcode, dest, src1, src2, R);
+        PC += 4;
     }
 
     cout << "\nFinal Registers:\n";
