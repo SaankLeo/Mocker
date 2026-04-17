@@ -1,119 +1,128 @@
 #include "cpu.h"
+#include <array>
 #include <vector>
 #include <string>
 #include <sstream>
+#include <iostream>
 #include <cctype>
+
 using namespace std;
 
 int main() {
-     
-    array<int,128> codeMemory = {0}; // Stores instructions like LOAD, ADD, etc.
-    array<int,128> dataMemory = {0}; // Stores actual values like 5, 3, 10, etc
-    vector<int> program;
-    
-    int dataIndex = 0;    // Tracks the next empty slot in data memory
+
+    // Two memory banks:
+    // codeMemory = the instructions (LOAD, ADD, MUL etc. encoded as numbers)
+    // dataMemory = the raw values (5, 3, 10 etc.)
+    array<int, 128> codeMemory = {0};
+    array<int, 128> dataMemory = {0};
+
+    vector<int> program;  // We build the program here first, then copy to codeMemory
+    int dataIndex = 0;    // Next free slot in dataMemory
 
     cout << "Enter instructions\n";
     cout << "Examples:\n";
     cout << "r0 = 5\n";
     cout << "r1 = 3\n";
     cout << "r2 = r0 + r1\n";
+    cout << "r3 = r2 * r1\n";
     cout << "Type run to execute\n\n";
 
-    string line;  // Stores the entire line the user types
+    string line;
 
     while (true) {
+
         cout << "cpu> ";
-        getline(cin, line); // Reads full line like: r2 = r0 + r1
+        getline(cin, line);
 
-    if (line == "run") {  // Stop taking input if user types run
-            break;
+        if (line == "run")  break;
+        if (line.empty())   continue;
+
+        stringstream ss(line);
+        string left, equalSign, first, op, second;
+
+        // Parse: left = equalSign = first  (e.g. r2 = r0)
+        ss >> left >> equalSign >> first;
+
+        if (left.empty() || first.empty()) {
+            cout << "Invalid instruction\n";
+            continue;
         }
-    
-    stringstream ss(line);   // Lets us break the line into smaller words
 
-    string left, equalSign, first, op, second; // Variables for different parts of the instruction
+        // "r2" -> 2
+        int dest = stoi(left.substr(1));
 
-     // Example:
-        // r2 = r0 + r1
-        // left = "r2"
-        // equalSign = "="
-        // first = "r0"
-    
-    ss >> left >> equalSign >> first;
-    // Reads first 3 parts of the instruction
-    // Example: r2 = r0
-    // left = "r2"
-    // equalSign = "="
-    // first = "r0"
+        // ----- CASE 1: r0 = 5  (plain number) -----
+        if (isdigit(first[0]) || (first[0] == '-' && isdigit(first[1]))) {
 
-    int dest = stoi(left.substr(1));
-    // Removes the 'r' from "r2"
-    // Converts "2" into integer 2
+            int value = stoi(first);
 
-    if (isdigit(first[0])) {
-        // Checks if first is a number
-        // Example: "5"
+            if (value < -8 || value > 7)
+                cout << "Warning: " << value << " is outside signed 4-bit range\n";
 
-        int value = stoi(first);
-        // Converts string "5" into integer 5
+            // Store value in data memory
+            dataMemory[dataIndex] = value;
 
-        dataMemory[dataIndex] = value;
-        // Stores value in next free data memory slot
+            // Emit: LOAD dest dataIndex 0
+            program.push_back(LOAD);
+            program.push_back(dest);
+            program.push_back(dataIndex);
+            program.push_back(0);
 
-        program.push_back(LOAD);
-        // Opcode for LOAD instruction
+            dataIndex++;
+        }
 
-        program.push_back(dest);
-        // Destination register
+        // CASE 2: r2 = r0 + r1
+        else {
 
-        program.push_back(dataIndex);
-        // Location in data memory where value is stored
+            ss >> op >> second;
 
-        program.push_back(0);
-        // Unused field
+            int src1 = stoi(first.substr(1));   // "r0" -> 0
+            int src2 = stoi(second.substr(1));  // "r1" -> 1
 
-        dataIndex++;
-        // Move to next free data memory slot
+            int opcode;
+            if      (op == "+") opcode = ADD;
+            else if (op == "-") opcode = SUB;
+            else if (op == "*") opcode = MUL;
+            else {
+                cout << "Unknown operator\n";
+                continue;
+            }
+
+            // Emit: opcode dest src1 src2
+            program.push_back(opcode);
+            program.push_back(dest);
+            program.push_back(src1);
+            program.push_back(src2);
+        }
     }
-    else {
-        // Means this is something like:
-        // r2 = r0 + r1
 
-        ss >> op >> second;
-        // Reads remaining parts
-        // op = "+"
-        // second = "r1"
+    // Append HALT to signal end of program
+    program.push_back(HALT);
+    program.push_back(0);
+    program.push_back(0);
+    program.push_back(0);
 
-        int src1 = stoi(first.substr(1));
-        // Converts "r0" into 0
+    // Copy assembled program into codeMemory
+    for (int i = 0; i < program.size(); i++)
+        codeMemory[i] = program[i];
 
-        int src2 = stoi(second.substr(1));
-        // Converts "r1" into 1
+    // Print code memory (4 slots per instruction)
+    cout << "\nCode Memory:\n";
+    for (int i = 0; i < program.size(); i += 4)
+        cout << "[" << i << "] "
+             << codeMemory[i]   << " "
+             << codeMemory[i+1] << " "
+             << codeMemory[i+2] << " "
+             << codeMemory[i+3] << endl;
 
-        int opcode;
-        // Stores which operation to perform
+    // Print data memory
+    cout << "\nData Memory:\n";
+    for (int i = 0; i < dataIndex; i++)
+        cout << "dataMemory[" << i << "] = " << dataMemory[i] << endl;
 
-        if (op == "+")
-            opcode = ADD;
-        else if (op == "-")
-            opcode = SUB;
-        else
-            opcode = MUL;
-        // Decide which opcode to use
+    cout << "\nExecuting Program...\n\n";
 
-        program.push_back(opcode);
-        // Store opcode
+    runCPU(codeMemory, program.size(), dataMemory);
 
-        program.push_back(dest);
-        // Store destination register
-
-        program.push_back(src1);
-        // Store first source register
-
-        program.push_back(src2);
-        // Store second source register
-}
-    
-    
+    return 0;
 }
