@@ -51,13 +51,18 @@ int main() {
         // "r2" -> 2
         int dest = stoi(left.substr(1));
 
+        if (dest < 0 || dest > 7)
+{
+        cout << "Register must be between r0 and r7\n";
+        continue;
+}
+
         // ----- CASE 1: r0 = 5  (plain number) -----
         if (isdigit(first[0]) || (first[0] == '-' && isdigit(first[1]))) {
 
             int value = stoi(first);
 
-            if (value < -8 || value > 7)
-                cout << "Warning: " << value << " is outside signed 4-bit range\n";
+            
 
             // Store value in data memory
             dataMemory[dataIndex] = value;

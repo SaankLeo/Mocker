@@ -9,6 +9,11 @@ enum Opcode {
     ADD,
     SUB,
     MUL,
+    CMP, //compare 2 registers
+    JMP, //unconditional jump
+    JZ,  //jump if zero flag set
+    JNZ, //jump if zero flag not set
+    STORE,
     HALT
 };
 
@@ -21,38 +26,100 @@ void execute(
     int src1,
     int src2,
     array<int, 8>& R,
-    array<int, 128>& dataMemory
-) {
-    switch (opcode) {
+    array<int, 128>& dataMemory,
+    bool& zeroFlag,
+    int& PC
+)
+{
+   switch (opcode)
+{
+    case LOAD:
+        R[dest] = dataMemory[src1];
 
-        case LOAD:
-            // Pull a value out of data memory and put it in a register
-            R[dest] = dataMemory[src1];
-            cout << "LOAD R" << dest << " <- " << dataMemory[src1] << endl;
-            break;
+        cout << "LOAD  R" << dest
+             << " <- MEM[" << src1 << "]"
+             << endl;
+        break;
 
-        case ADD:
-            // R[dest] = R[src1] + R[src2]
-            R[dest] = R[src1] + R[src2];
-            cout << "ADD R" << dest << " = R" << src1 << " + R" << src2 << endl;
-            break;
+    case STORE:
+        dataMemory[src1] = R[dest];
 
-        case SUB:
-            // R[dest] = R[src1] - R[src2]
-            R[dest] = R[src1] - R[src2];
-            cout << "SUB R" << dest << " = R" << src1 << " - R" << src2 << endl;
-            break;
+        cout << "STORE R" << dest
+             << " -> MEM[" << src1 << "]"
+             << endl;
+        break;
 
-        case MUL:
-            // R[dest] = R[src1] * R[src2]
-            R[dest] = R[src1] * R[src2];
-            cout << "MUL R" << dest << " = R" << src1 << " * R" << src2 << endl;
-            break;
+    case ADD:
+        R[dest] = R[src1] + R[src2];
 
-        default:
-            cout << "Unknown opcode encountered" << endl;
-    }
+        cout << "ADD   R" << dest
+             << " = R" << src1
+             << " + R" << src2
+             << endl;
+        break;
+
+    case SUB:
+        R[dest] = R[src1] - R[src2];
+
+        cout << "SUB   R" << dest
+             << " = R" << src1
+             << " - R" << src2
+             << endl;
+        break;
+
+    case MUL:
+        R[dest] = R[src1] * R[src2];
+
+        cout << "MUL   R" << dest
+             << " = R" << src1
+             << " * R" << src2
+             << endl;
+        break;
+
+    case CMP:
+        zeroFlag = (R[src1] == R[src2]);
+
+        cout << "CMP   R" << src1
+             << ", R" << src2
+             << endl;
+        break;
+
+    case JMP:
+        PC = dest - 4;
+
+        cout << "JMP   " << dest
+             << endl;
+        break;
+
+    case JZ:
+        if (zeroFlag)
+        {
+            PC = dest - 4;
+
+            cout << "JZ    taken -> "
+                 << dest
+                 << endl;
+        }
+        break;
+
+    case JNZ:
+        if (!zeroFlag)
+        {
+            PC = dest - 4;
+
+            cout << "JNZ   taken -> "
+                 << dest
+                 << endl;
+        }
+        break;
+
+    default:
+        cout << "ERROR: Unknown opcode "
+             << opcode
+             << endl;
 }
+}
+
 
 // Runs the full program until HALT
 // memory = code memory, programSize = total slots used, dataMemory = raw values
@@ -63,6 +130,9 @@ void runCPU(
 ) {
     array<int, 8> R = {0};  // R0-R7, all start at 0
     int PC = 0;             // Program Counter, moves +4 each instruction
+
+    // Set by CMP instruction
+    bool zeroFlag = false;
 
     while (PC < programSize) {
 
@@ -77,7 +147,7 @@ void runCPU(
             break;
         }
 
-        execute(opcode, dest, src1, src2, R, dataMemory);
+        execute(opcode, dest, src1, src2, R, dataMemory, zeroFlag,PC);
 
         PC += 4;  // Jump to next instruction
     }
