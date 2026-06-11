@@ -1,0 +1,19 @@
+# Compiled executables
+*.exe
+
+# Object files
+*.o
+*.obj
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+
+# Build folders
+build/
+bin/
+
+# Temporary files
+*.tmp
+*.log
