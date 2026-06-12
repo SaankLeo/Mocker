@@ -1,6 +1,6 @@
 #pragma once
-#include "cpu.h"
 #include "encode.h"
+#include "memory.h"
 #include <vector>
 #include <string>
 #include <sstream>
@@ -19,30 +19,30 @@ struct Assembler {
     vector<Patch>                 patches;
     bool hasError = false;
 
+    // Assemble relative to a base address (for label resolution with memory layout)
+    uint32_t baseAddr = 0;
+
     static string clean(const string& raw) {
-        string s = raw;
-        for (size_t i = 0; i < s.size(); i++)
-            if (s[i]=='#'||s[i]==';') { s=s.substr(0,i); break; }
-        size_t a = s.find_first_not_of(" \t\r\n");
-        if (a == string::npos) return "";
-        size_t b = s.find_last_not_of(" \t\r\n");
-        return s.substr(a, b-a+1);
+        string s=raw;
+        for(size_t i=0;i<s.size();i++) if(s[i]=='#'||s[i]==';'){s=s.substr(0,i);break;}
+        size_t a=s.find_first_not_of(" \t\r\n");
+        if(a==string::npos) return "";
+        size_t b=s.find_last_not_of(" \t\r\n");
+        return s.substr(a,b-a+1);
     }
 
     static vector<string> tokenize(const string& s) {
-        vector<string> out;
-        string cur;
-        for (char c : s) {
-            if (c == ',' || c == '\t') {
-                string t = clean(cur); if (!t.empty()) out.push_back(t); cur.clear();
-            } else cur += c;
+        vector<string> out; string cur;
+        for(char c:s){
+            if(c==','||c=='\t'){string t=clean(cur);if(!t.empty())out.push_back(t);cur.clear();}
+            else cur+=c;
         }
-        string t = clean(cur); if (!t.empty()) out.push_back(t);
+        string t=clean(cur); if(!t.empty()) out.push_back(t);
         return out;
     }
 
     static const unordered_map<string,int>& abiMap() {
-        static unordered_map<string,int> m = {
+        static unordered_map<string,int> m={
             {"zero",0},{"ra",1},{"sp",2},{"gp",3},{"tp",4},
             {"t0",5},{"t1",6},{"t2",7},{"s0",8},{"fp",8},{"s1",9},
             {"a0",10},{"a1",11},{"a2",12},{"a3",13},{"a4",14},{"a5",15},
@@ -54,12 +54,12 @@ struct Assembler {
     }
 
     int parseReg(const string& tok) {
-        string s = tok;
+        string s=tok;
         transform(s.begin(),s.end(),s.begin(),[](unsigned char c){return tolower(c);});
-        if (s.size()>=2 && s[0]=='x') {
+        if(s.size()>=2&&s[0]=='x'){
             bool ok=true;
             for(size_t i=1;i<s.size();i++) if(!isdigit((unsigned char)s[i])){ok=false;break;}
-            if(ok){ int n=stoi(s.substr(1)); if(n>=0&&n<=31) return n; }
+            if(ok){int n=stoi(s.substr(1));if(n>=0&&n<=31)return n;}
         }
         auto it=abiMap().find(s);
         if(it!=abiMap().end()) return it->second;
@@ -67,20 +67,20 @@ struct Assembler {
     }
 
     static int32_t parseImm(const string& tok) {
-        try { size_t p; return (int32_t)stol(tok,&p,0); } catch(...){ return 0; }
+        try{size_t p;return (int32_t)stol(tok,&p,0);}catch(...){return 0;}
     }
 
     bool parseMemOperand(const string& tok, int& reg, int32_t& imm) {
-        size_t lp=tok.find('('), rp=tok.find(')');
+        size_t lp=tok.find('('),rp=tok.find(')');
         if(lp==string::npos||rp==string::npos){
-            cout<<"Expected imm(reg), got: "<<tok<<"\n"; hasError=true; return false;
+            cout<<"Expected imm(reg), got: "<<tok<<"\n";hasError=true;return false;
         }
         imm=parseImm(tok.substr(0,lp));
         reg=parseReg(tok.substr(lp+1,rp-lp-1));
         return true;
     }
 
-    uint32_t currentPC() const { return (uint32_t)(program.size()*4); }
+    uint32_t currentPC() const { return baseAddr + (uint32_t)(program.size()*4); }
     void emit(uint32_t w) { program.push_back(w); }
 
     void emitBranchPatch(const string& label, uint32_t partial) {
@@ -90,12 +90,15 @@ struct Assembler {
 
     bool assembleLine(const string& rawLine)
     {
-        string line = clean(rawLine);
-        if (line.empty()) return true;
+        string line=clean(rawLine);
+        if(line.empty()) return true;
 
-        if (line.back()==':') {
-            labelDefs[line.substr(0,line.size()-1)]=(int32_t)currentPC(); return true;
+        // Label-only line
+        if(line.back()==':'){
+            labelDefs[line.substr(0,line.size()-1)]=(int32_t)currentPC();
+            return true;
         }
+        // Label + instruction on same line
         {
             size_t col=line.find(':');
             if(col!=string::npos&&col>0){
@@ -115,8 +118,8 @@ struct Assembler {
         transform(mnem.begin(),mnem.end(),mnem.begin(),[](unsigned char c){return tolower(c);});
         vector<string> ops=tokenize(rest);
 
-        auto reg=[&](int i)->int{ return parseReg(ops[i]); };
-        auto imm=[&](int i)->int32_t{ return parseImm(ops[i]); };
+        auto reg=[&](int i)->int{return parseReg(ops[i]);};
+        auto imm=[&](int i)->int32_t{return parseImm(ops[i]);};
         auto need=[&](size_t n)->bool{
             if(ops.size()<n){cout<<"Too few operands for "<<mnem<<"\n";hasError=true;return false;}
             return true;
@@ -126,6 +129,8 @@ struct Assembler {
         if(mnem=="nop"){emit(encodeI(0,0,F3::ADD_SUB,0,OP::I_ARITH));return!hasError;}
         if(mnem=="ret"){emit(encodeI(0,1,F3::JALR,0,OP::JALR));return!hasError;}
         if(mnem=="mv"){if(!need(2))return false;emit(encodeI(0,reg(1),F3::ADD_SUB,reg(0),OP::I_ARITH));return!hasError;}
+        if(mnem=="not"){if(!need(2))return false;emit(encodeI(-1,reg(1),F3::XOR,reg(0),OP::I_ARITH));return!hasError;}
+        if(mnem=="neg"){if(!need(2))return false;emit(encodeR(F7::ALT,reg(1),0,F3::ADD_SUB,reg(0),OP::R_TYPE));return!hasError;}
         if(mnem=="li"){
             if(!need(2))return false;
             int rd=reg(0); int32_t v=imm(1);
@@ -134,10 +139,28 @@ struct Assembler {
                  emit(encodeU(hi<<12,rd,OP::LUI));emit(encodeI(lo,rd,F3::ADD_SUB,rd,OP::I_ARITH));}
             return!hasError;
         }
+        if(mnem=="la"){  // load address — like li but for labels
+            if(!need(2))return false;
+            // emit lui+addi with patch
+            int rd=reg(0);
+            // Two-word patch: we store as a special case
+            // For simplicity: emit li with placeholder, patch in resolveLabels
+            // We'll use a "la" patch type by encoding as two NOPs initially
+            emit(encodeU(0,rd,OP::LUI));   // placeholder lui
+            emit(encodeI(0,rd,F3::ADD_SUB,rd,OP::I_ARITH)); // placeholder addi
+            // Record both words need patching
+            patches.push_back({(int)program.size()-2, ops[1], currentPC()-8});
+            patches.push_back({(int)program.size()-1, ops[1]+"__lo", currentPC()-4});
+            return!hasError;
+        }
         if(mnem=="j"){if(!need(1))return false;emitBranchPatch(ops[0],encodeJ(0,0,OP::JAL));return!hasError;}
         if(mnem=="call"){if(!need(1))return false;emitBranchPatch(ops[0],encodeJ(0,1,OP::JAL));return!hasError;}
         if(mnem=="beqz"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,0,reg(0),F3::BEQ,OP::BRANCH));return!hasError;}
         if(mnem=="bnez"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,0,reg(0),F3::BNE,OP::BRANCH));return!hasError;}
+        if(mnem=="blez"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,reg(0),0,F3::BGE,OP::BRANCH));return!hasError;}
+        if(mnem=="bgez"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,0,reg(0),F3::BGE,OP::BRANCH));return!hasError;}
+        if(mnem=="bltz"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,0,reg(0),F3::BLT,OP::BRANCH));return!hasError;}
+        if(mnem=="bgtz"){if(!need(2))return false;emitBranchPatch(ops[1],encodeB(0,reg(0),0,F3::BLT,OP::BRANCH));return!hasError;}
 
         // R-type
         auto emitR=[&](uint32_t f7,uint32_t f3){if(!need(3))return;emit(encodeR(f7,reg(2),reg(1),f3,reg(0),OP::R_TYPE));};
@@ -152,7 +175,7 @@ struct Assembler {
         if(mnem=="slt") {emitR(F7::NORMAL,F3::SLT);    return!hasError;}
         if(mnem=="sltu"){emitR(F7::NORMAL,F3::SLTU);   return!hasError;}
 
-        // I-type arith
+        // I-type
         auto emitI=[&](uint32_t f3,uint32_t f7o=F7::NORMAL){
             if(!need(3))return;
             int32_t i=imm(2);
@@ -169,11 +192,11 @@ struct Assembler {
         if(mnem=="srli") {emitI(F3::SRL_SRA);         return!hasError;}
         if(mnem=="srai") {emitI(F3::SRL_SRA,F7::ALT); return!hasError;}
 
-        // Loads
+        // Loads / Stores
         auto emitLoad=[&](uint32_t f3){
-            if(!need(2))return; int base; int32_t off;
-            if(!parseMemOperand(ops[1],base,off))return;
-            emit(encodeI(off,base,f3,reg(0),OP::LOAD));
+            if(!need(2))return; int b; int32_t off;
+            if(!parseMemOperand(ops[1],b,off))return;
+            emit(encodeI(off,b,f3,reg(0),OP::LOAD));
         };
         if(mnem=="lw") {emitLoad(F3::WORD);return!hasError;}
         if(mnem=="lh") {emitLoad(F3::HALF);return!hasError;}
@@ -181,11 +204,10 @@ struct Assembler {
         if(mnem=="lhu"){emitLoad(0b101);   return!hasError;}
         if(mnem=="lbu"){emitLoad(0b100);   return!hasError;}
 
-        // Stores
         auto emitStore=[&](uint32_t f3){
-            if(!need(2))return; int base; int32_t off;
-            if(!parseMemOperand(ops[1],base,off))return;
-            emit(encodeS(off,reg(0),base,f3,OP::STORE));
+            if(!need(2))return; int b; int32_t off;
+            if(!parseMemOperand(ops[1],b,off))return;
+            emit(encodeS(off,reg(0),b,f3,OP::STORE));
         };
         if(mnem=="sw"){emitStore(F3::WORD);return!hasError;}
         if(mnem=="sh"){emitStore(F3::HALF);return!hasError;}
@@ -203,14 +225,24 @@ struct Assembler {
         if(mnem=="bltu"){emitBranch(0b110);   return!hasError;}
         if(mnem=="bgeu"){emitBranch(0b111);   return!hasError;}
 
-        // JAL / JALR / LUI / AUIPC
         if(mnem=="jal"){if(!need(2))return false;emitBranchPatch(ops[1],encodeJ(0,reg(0),OP::JAL));return!hasError;}
         if(mnem=="jalr"){if(!need(3))return false;emit(encodeI(imm(2),reg(1),F3::JALR,reg(0),OP::JALR));return!hasError;}
         if(mnem=="lui"){if(!need(2))return false;emit(encodeU(imm(1)<<12,reg(0),OP::LUI));return!hasError;}
         if(mnem=="auipc"){if(!need(2))return false;emit(encodeU(imm(1)<<12,reg(0),OP::AUIPC));return!hasError;}
 
+        // CSR instructions
+        if(mnem=="csrrw"){if(!need(3))return false;emit(encodeI(imm(2),reg(1),0b001,reg(0),0b1110011));return!hasError;}
+        if(mnem=="csrrs"){if(!need(3))return false;emit(encodeI(imm(2),reg(1),0b010,reg(0),0b1110011));return!hasError;}
+        if(mnem=="csrrc"){if(!need(3))return false;emit(encodeI(imm(2),reg(1),0b011,reg(0),0b1110011));return!hasError;}
+        if(mnem=="csrr") {if(!need(2))return false;// csrr rd, csr -> csrrs rd, csr, x0
+            emit(encodeI(imm(1),0,0b010,reg(0),0b1110011));return!hasError;}
+
         if(mnem=="ecall") {emit(0x00000073);return!hasError;}
         if(mnem=="ebreak"){emit(0x00100073);return!hasError;}
+        if(mnem=="mret")  {emit(0x30200073);return!hasError;}
+
+        // .word directive — raw 32-bit value
+        if(mnem==".word"){if(!need(1))return false;emit((uint32_t)imm(0));return!hasError;}
 
         cout<<"Unknown mnemonic: '"<<mnem<<"'\n"; hasError=true; return false;
     }
@@ -219,41 +251,56 @@ struct Assembler {
     {
         bool ok=true;
         for(auto& p:patches){
+            // Skip __lo patches (handled alongside their __hi partner)
+            if(p.label.size()>4 && p.label.substr(p.label.size()-4)=="__lo") continue;
+
             auto it=labelDefs.find(p.label);
-            if(it==labelDefs.end()){cout<<"Undefined label: '"<<p.label<<"'\n";ok=false;continue;}
-            int32_t offset=it->second-(int32_t)p.instrPC;
-            uint32_t old=program[p.idx], op=decodeOpcode(old);
+            if(it==labelDefs.end()){
+                cout<<"Undefined label: '"<<p.label<<"'\n";ok=false;continue;
+            }
+            int32_t target=it->second;
+            uint32_t old=program[p.idx];
+            uint32_t op=decodeOpcode(old);
+
             if(op==OP::JAL){
+                int32_t offset=target-(int32_t)p.instrPC;
                 program[p.idx]=encodeJ(offset,decodeRd(old),OP::JAL);
             } else if(op==OP::BRANCH){
+                int32_t offset=target-(int32_t)p.instrPC;
                 program[p.idx]=encodeB(offset,decodeRs2(old),decodeRs1(old),decodeFunct3(old),OP::BRANCH);
-            } else {cout<<"Internal patch error\n";ok=false;}
+            } else if(op==OP::LUI){
+                // la instruction: patch lui + addi with absolute address
+                int32_t addr=target;
+                int32_t hi=(addr+0x800)>>12, lo=addr-(hi<<12);
+                uint32_t rd=decodeRd(old);
+                program[p.idx]  =encodeU(hi<<12,rd,OP::LUI);
+                program[p.idx+1]=encodeI(lo,rd,F3::ADD_SUB,rd,OP::I_ARITH);
+            } else {
+                cout<<"Internal patch error op=0x"<<hex<<op<<dec<<"\n"; ok=false;
+            }
         }
         return ok;
     }
 
-    bool loadFile(const string& path)
+    bool loadFile(const string& path, uint32_t base=0)
     {
+        baseAddr=base;
         ifstream f(path);
         if(!f.is_open()){cout<<"Cannot open '"<<path<<"'\n";return false;}
         string line; int n=0;
-        while(getline(f,line)){
-            n++;
-            if(!assembleLine(line)) cout<<"  at line "<<n<<": "<<line<<"\n";
-        }
+        while(getline(f,line)){n++;if(!assembleLine(line))cout<<"  at line "<<n<<": "<<line<<"\n";}
         return !hasError;
     }
 
     bool finalise() { return resolveLabels() && !hasError; }
 
-    void dump(const string& name="") const
-    {
+    void dump(const string& name="") const {
         if(!name.empty()) cout<<"\n["<<name<<"] ";
-        cout<<"Assembled "<<program.size()<<" instructions:\n";
+        cout<<"Assembled "<<program.size()<<" instructions (base=0x"
+            <<hex<<baseAddr<<dec<<"):\n";
         if(!labelDefs.empty()){
             cout<<"  Labels:\n";
-            for(auto&[k,v]:labelDefs)
-                cout<<"    "<<k<<" -> 0x"<<hex<<v<<dec<<"\n";
+            for(auto&[k,v]:labelDefs) cout<<"    "<<k<<" -> 0x"<<hex<<v<<dec<<"\n";
         }
     }
 };
