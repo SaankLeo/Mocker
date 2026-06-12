@@ -1,159 +1,147 @@
 #pragma once
 #include <array>
 #include <iostream>
+#include <string>
+#include <unordered_map>
 
 using namespace std;
 
+// ─────────────────────────────────────────────
+//  ISA
+// ─────────────────────────────────────────────
 enum Opcode {
-    LOAD = 1,
+    LOAD  = 1,
     ADD,
     SUB,
     MUL,
-    CMP, //compare 2 registers
-    JMP, //unconditional jump
-    JZ,  //jump if zero flag set
-    JNZ, //jump if zero flag not set
-    STORE,
+    CMP,   // compare two registers → sets zeroFlag
+    JMP,   // unconditional jump
+    JZ,    // jump if zeroFlag == true
+    JNZ,   // jump if zeroFlag == false
+    STORE, // store register → data memory
     HALT
 };
 
-// Executes ONE instruction
-// opcode = what to do, dest = where to store result
-// src1, src2 = source registers (for LOAD, src1 is the data memory index)
-void execute(
-    int opcode,
-    int dest,
-    int src1,
-    int src2,
-    array<int, 8>& R,
-    array<int, 128>& dataMemory,
-    bool& zeroFlag,
-    int& PC
-)
+// ─────────────────────────────────────────────
+//  CPU state
+// ─────────────────────────────────────────────
+struct CPU {
+    array<int, 8>   R        = {0};   // R0–R7
+    int             PC       = 0;     // program counter (byte index into codeMemory)
+    bool            zeroFlag = false;
+
+    array<int, 128>* codeMemory = nullptr;
+    array<int, 128>* dataMemory = nullptr;
+};
+
+// ─────────────────────────────────────────────
+//  Execute ONE instruction
+// ─────────────────────────────────────────────
+inline void execute(CPU& cpu, int opcode, int dest, int src1, int src2)
 {
-   switch (opcode)
-{
-    case LOAD:
-        R[dest] = dataMemory[src1];
+    switch (opcode)
+    {
+        case LOAD:
+            cpu.R[dest] = (*cpu.dataMemory)[src1];
+            cout << "LOAD  R" << dest
+                 << " <- MEM[" << src1 << "]"
+                 << "  (= " << cpu.R[dest] << ")\n";
+            break;
 
-        cout << "LOAD  R" << dest
-             << " <- MEM[" << src1 << "]"
-             << endl;
-        break;
+        case STORE:
+            (*cpu.dataMemory)[src1] = cpu.R[dest];
+            cout << "STORE R" << dest
+                 << " -> MEM[" << src1 << "]"
+                 << "  (= " << cpu.R[dest] << ")\n";
+            break;
 
-    case STORE:
-        dataMemory[src1] = R[dest];
+        case ADD:
+            cpu.R[dest] = cpu.R[src1] + cpu.R[src2];
+            cout << "ADD   R" << dest
+                 << " = R" << src1 << "(" << cpu.R[src1] << ")"
+                 << " + R" << src2 << "(" << cpu.R[src2] << ")"
+                 << " = " << cpu.R[dest] << "\n";
+            break;
 
-        cout << "STORE R" << dest
-             << " -> MEM[" << src1 << "]"
-             << endl;
-        break;
+        case SUB:
+            cpu.R[dest] = cpu.R[src1] - cpu.R[src2];
+            cout << "SUB   R" << dest
+                 << " = R" << src1 << "(" << cpu.R[src1] << ")"
+                 << " - R" << src2 << "(" << cpu.R[src2] << ")"
+                 << " = " << cpu.R[dest] << "\n";
+            break;
 
-    case ADD:
-        R[dest] = R[src1] + R[src2];
+        case MUL:
+            cpu.R[dest] = cpu.R[src1] * cpu.R[src2];
+            cout << "MUL   R" << dest
+                 << " = R" << src1 << "(" << cpu.R[src1] << ")"
+                 << " * R" << src2 << "(" << cpu.R[src2] << ")"
+                 << " = " << cpu.R[dest] << "\n";
+            break;
 
-        cout << "ADD   R" << dest
-             << " = R" << src1
-             << " + R" << src2
-             << endl;
-        break;
+        case CMP:
+            cpu.zeroFlag = (cpu.R[src1] == cpu.R[src2]);
+            cout << "CMP   R" << src1 << "(" << cpu.R[src1] << ")"
+                 << " == R" << src2 << "(" << cpu.R[src2] << ")"
+                 << "  -> zeroFlag=" << cpu.zeroFlag << "\n";
+            break;
 
-    case SUB:
-        R[dest] = R[src1] - R[src2];
+        case JMP:
+            cout << "JMP   " << dest << "\n";
+            cpu.PC = dest - 4;   // -4 because the loop always adds 4
+            break;
 
-        cout << "SUB   R" << dest
-             << " = R" << src1
-             << " - R" << src2
-             << endl;
-        break;
+        case JZ:
+            if (cpu.zeroFlag) {
+                cout << "JZ    taken -> " << dest << "\n";
+                cpu.PC = dest - 4;
+            } else {
+                cout << "JZ    not taken\n";
+            }
+            break;
 
-    case MUL:
-        R[dest] = R[src1] * R[src2];
+        case JNZ:
+            if (!cpu.zeroFlag) {
+                cout << "JNZ   taken -> " << dest << "\n";
+                cpu.PC = dest - 4;
+            } else {
+                cout << "JNZ   not taken\n";
+            }
+            break;
 
-        cout << "MUL   R" << dest
-             << " = R" << src1
-             << " * R" << src2
-             << endl;
-        break;
-
-    case CMP:
-        zeroFlag = (R[src1] == R[src2]);
-
-        cout << "CMP   R" << src1
-             << ", R" << src2
-             << endl;
-        break;
-
-    case JMP:
-        PC = dest - 4;
-
-        cout << "JMP   " << dest
-             << endl;
-        break;
-
-    case JZ:
-        if (zeroFlag)
-        {
-            PC = dest - 4;
-
-            cout << "JZ    taken -> "
-                 << dest
-                 << endl;
-        }
-        break;
-
-    case JNZ:
-        if (!zeroFlag)
-        {
-            PC = dest - 4;
-
-            cout << "JNZ   taken -> "
-                 << dest
-                 << endl;
-        }
-        break;
-
-    default:
-        cout << "ERROR: Unknown opcode "
-             << opcode
-             << endl;
-}
+        default:
+            cout << "ERROR: Unknown opcode " << opcode << "\n";
+            break;
+    }
 }
 
-
-// Runs the full program until HALT
-// memory = code memory, programSize = total slots used, dataMemory = raw values
-void runCPU(
-    array<int, 128>& memory,
-    int programSize,
-    array<int, 128>& dataMemory
-) {
-    array<int, 8> R = {0};  // R0-R7, all start at 0
-    int PC = 0;             // Program Counter, moves +4 each instruction
-
-    // Set by CMP instruction
-    bool zeroFlag = false;
-
-    while (PC < programSize) {
-
-        // Read the 4-slot instruction at current PC
-        int opcode = memory[PC];
-        int dest   = memory[PC + 1];
-        int src1   = memory[PC + 2];
-        int src2   = memory[PC + 3];
+// ─────────────────────────────────────────────
+//  Run until HALT (or end of program)
+// ─────────────────────────────────────────────
+inline void runCPU(CPU& cpu, int programSize)
+{
+    while (cpu.PC < programSize)
+    {
+        int opcode = (*cpu.codeMemory)[cpu.PC    ];
+        int dest   = (*cpu.codeMemory)[cpu.PC + 1];
+        int src1   = (*cpu.codeMemory)[cpu.PC + 2];
+        int src2   = (*cpu.codeMemory)[cpu.PC + 3];
 
         if (opcode == HALT) {
-            cout << "HALT encountered" << endl;
+            cout << "HALT\n";
             break;
         }
 
-        execute(opcode, dest, src1, src2, R, dataMemory, zeroFlag,PC);
-
-        PC += 4;  // Jump to next instruction
+        execute(cpu, opcode, dest, src1, src2);
+        cpu.PC += 4;
     }
 
-    // Print all register values at the end
     cout << "\nFinal Registers:\n";
     for (int i = 0; i < 8; i++)
-        cout << "R" << i << " = " << R[i] << endl;
+        cout << "  R" << i << " = " << cpu.R[i] << "\n";
+
+    cout << "\nData Memory (non-zero slots):\n";
+    for (int i = 0; i < 128; i++)
+        if ((*cpu.dataMemory)[i] != 0)
+            cout << "  MEM[" << i << "] = " << (*cpu.dataMemory)[i] << "\n";
 }
