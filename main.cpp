@@ -1,47 +1,26 @@
 #include "cpu.h"
 #include "assembler.h"
 #include <iostream>
-#include <string>
 
 using namespace std;
 
 int main(int argc, char* argv[])
 {
-    array<int, 128> codeMemory = {0};
-
     Assembler as;
-    bool ok = false;
-
-    // ── File mode: ./cpu program.asm ──────────────────────────────────────
-    if (argc >= 2) {
-        cout << "Loading " << argv[1] << " ...\n";
-        ok = as.loadFile(argv[1]);
-    }
-    // ── Interactive REPL ──────────────────────────────────────────────────
-    else {
-        ok = as.loadInteractive();
-    }
-
-    if (!ok) {
-        cout << "Assembly failed.\n";
-        return 1;
-    }
-
-    if (!as.finalise(codeMemory)) {
-        cout << "Finalisation failed.\n";
-        return 1;
-    }
-
-    as.dumpCode(codeMemory);
-    as.dumpData();
-
-    // ── Wire up CPU ───────────────────────────────────────────────────────
     CPU cpu;
-    cpu.codeMemory = &codeMemory;
-    cpu.dataMemory = &as.dataMemory;
 
+    bool ok = (argc >= 2) ? as.loadFile(argv[1]) : as.loadInteractive();
+
+    if (!ok) { cout << "Assembly failed.\n"; return 1; }
+    if (!as.finalise(cpu)) { cout << "Label resolution failed.\n"; return 1; }
+
+    as.dump();
     cout << "\nExecuting...\n\n";
-    runCPU(cpu, (int)as.program.size());
 
+    // trace=true for interactive, can pass --no-trace for file mode
+    bool trace = true;
+    if (argc >= 3 && string(argv[2]) == "--no-trace") trace = false;
+
+    runCPU(cpu, trace);
     return 0;
 }
