@@ -51,21 +51,7 @@ It started as a minimal 8-register custom CPU and grew into an emulator with:
 
 ## Features
 
-| Feature | Status |
-|---|---|
-| Custom CPU (8-reg, Harvard) | ✅ |
-| RV32I register file (x0–x31) | ✅ |
-| All 6 instruction formats (R/I/S/B/U/J) | ✅ |
-| Two-pass assembler with labels | ✅ |
-| Multi-hart round-robin scheduler | ✅ |
-| Shared flat memory (SMP model) | ✅ |
-| Per-hart address space isolation | ✅ |
-| Machine Mode / User Mode | ✅ |
-| CSRs: mstatus, mepc, mcause, mtvec, mtval | ✅ |
-| Trap handling (exceptions + interrupts) | ✅ |
-| Timer interrupts + preemptive scheduling | ✅ |
-| ECALL-based syscall interface | ✅ |
-| IPC: SEND/RECV with blocking & wake-up | ✅ |
+
 
 ---
 
@@ -73,19 +59,11 @@ It started as a minimal 8-register custom CPU and grew into an emulator with:
 
 ```bash
 # Build
-g++ main.cpp -o cpu
+g++ main.cpp -o cpu  
 
-# Run with default program
-./cpu
+cpu t_timer0.asm t_timer1.asm
 
-# Run multiple harts with assembly files
-./cpu hart0.asm hart1.asm hart2.asm
-
-# Run IPC tests
-./cpu t0_syscalls.asm t1_ipc.asm t2_recv.asm
-
-# Run timer interrupt tests
-./cpu t_timer0.asm t_timer1.asm
+cpu hart0.asm hart1.asm hart2.asm
 ```
 
 ---
