@@ -1,6 +1,6 @@
 # Mocker — A RV32I CPU Emulator & Mini Kernel
 
-A from-scratch CPU emulator written in C++ that evolved phase-by-phase from a custom toy architecture into a functionally complete **RISC-V RV32I emulator** running a minimal kernel.
+A from scratch CPU emulator written in C++ that evolved phase-by-phase from a custom toy architecture into a functionally complete **RISC-V RV32I emulator** running a minimal kernel.
 
 ---
 
